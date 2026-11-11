@@ -9,31 +9,6 @@
 const { OpenAI } = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
-// 환경 변수 설정
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// OpenAI 클라이언트 초기화
-let openaiClient = null;
-if (OPENAI_API_KEY) {
-  openaiClient = new OpenAI({
-    apiKey: OPENAI_API_KEY,
-  });
-}
-
-// Supabase 클라이언트 초기화 (RLS 우회 가능한 Service Role 키 사용)
-let supabaseClient = null;
-if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-  supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
-
 /**
  * API 요청 처리 핵심 핸들러 함수
  * @param {object} req - HTTP 요청 객체
@@ -51,9 +26,23 @@ async function handler(req, res) {
     });
   }
 
+  // 런타임 환경 변수 읽기
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   try {
     // 2. 요청 본문(body) 확인
-    const body = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
+    body = body || {};
     const text = body.text;
 
     // 3. 입력값 형식 및 길이 검증 (1 ~ 5,000자)
@@ -90,8 +79,23 @@ async function handler(req, res) {
       });
     }
 
+    // OpenAI 클라이언트 초기화
+    const openaiClient = new OpenAI({
+      apiKey: OPENAI_API_KEY,
+    });
+
+    // Supabase 클라이언트 초기화 (설정값이 있는 경우에만 초기화)
+    let supabaseClient = null;
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      });
+    }
+
     // 5. OpenAI 감성 분석 요청
-    // JSON 모드를 활성화하여 항상 규격화된 JSON 문자열로 답변을 받습니다.
     const systemPrompt = `당신은 한국어 텍스트의 감성 분류 도우미입니다.
 입력 텍스트 전체에서 가장 두드러지는 감정을 positive, negative, neutral 중 하나로 분류하세요.
 입력에 없는 사실이나 작성자의 숨은 의도를 추측하지 마세요.
@@ -114,13 +118,14 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
           { role: 'user', content: trimmedText },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.2, // 보수적이고 일관된 결과를 위해 낮은 온도로 설정
+        temperature: 0.2,
       });
 
       aiRawResponseText = completion.choices[0]?.message?.content || '';
     } catch (apiError) {
-      // 보안 준수: 에러 객체 자체나 API 키, 원문은 외부에 노출하지 않고 안전한 코드만 반환
-      console.error('[OpenAI Error] API 호출 실패:', apiError.message);
+      // 보안을 유지하면서 구체적인 원인 로그를 Vercel 함수 로그에 남김
+      console.error('[OpenAI Error Status]:', apiError.status);
+      console.error('[OpenAI Error Message]:', apiError.message);
       return res.status(502).json({
         success: false,
         error: {
@@ -207,7 +212,6 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
     }
 
     // 8. 최종 응답 반환
-    // 정책: DB 저장이 실패하더라도 분석 결과 자체는 사용자에게 성공적으로 표시합니다.
     const responsePayload = {
       success: true,
       data: validatedResult,
@@ -232,4 +236,3 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
 }
 
 module.exports = handler;
-
