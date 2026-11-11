@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build": "echo 'No build step required for static site'"
   },
   "keywords": [
     "sentiment-analysis",
@@ -21,4 +22,3 @@
     "openai": "^4.85.4"
   }
 }
-
