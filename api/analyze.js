@@ -3,11 +3,45 @@
 // ASCEN 백엔드 감성 분석 API 핸들러
 // - OpenAI API를 호출하여 한국어 텍스트의 감정(positive/negative/neutral)을 분석합니다.
 // - 분석 결과를 Supabase analyses 테이블에 저장합니다.
-// - Vercel Serverless Function 및 로컬 Express 서버 양쪽에서 모두 호환됩니다.
+// - Vercel Serverless Function 및 로컬 Express 서버 양쪽에서 모두 완벽 호환됩니다.
 // ==============================================================================
 
 const { OpenAI } = require('openai');
 const { createClient } = require('@supabase/supabase-js');
+
+/**
+ * Vercel Serverless Function 요청 본문(body) 안전 추출 헬퍼 함수
+ */
+async function parseRequestBody(req) {
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch (e) {
+        return {};
+      }
+    }
+    return req.body;
+  }
+
+  // 스트림 형태로 본문이 전달되는 환경 대응
+  return new Promise((resolve) => {
+    let rawData = '';
+    req.on('data', (chunk) => {
+      rawData += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(rawData || '{}'));
+      } catch (e) {
+        resolve({});
+      }
+    });
+    req.on('error', () => {
+      resolve({});
+    });
+  });
+}
 
 /**
  * API 요청 처리 핵심 핸들러 함수
@@ -15,6 +49,19 @@ const { createClient } = require('@supabase/supabase-js');
  * @param {object} res - HTTP 응답 객체
  */
 async function handler(req, res) {
+  // CORS 및 메서드 사전 검증
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   // 1. HTTP 메서드 검증 (POST 요청만 허용)
   if (req.method !== 'POST') {
     return res.status(405).json({
@@ -26,23 +73,15 @@ async function handler(req, res) {
     });
   }
 
-  // 런타임 환경 변수 읽기
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // 런타임 환경 변수 안전 로드
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : '';
+  const OPENAI_MODEL = process.env.OPENAI_MODEL ? process.env.OPENAI_MODEL.trim() : 'gpt-4o-mini';
+  const SUPABASE_URL = process.env.SUPABASE_URL ? process.env.SUPABASE_URL.trim() : '';
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ? process.env.SUPABASE_SERVICE_ROLE_KEY.trim() : '';
 
   try {
-    // 2. 요청 본문(body) 확인
-    let body = req.body;
-    if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch (e) {
-        body = {};
-      }
-    }
-    body = body || {};
+    // 2. 요청 본문(body) 파싱
+    const body = await parseRequestBody(req);
     const text = body.text;
 
     // 3. 입력값 형식 및 길이 검증 (1 ~ 5,000자)
@@ -69,12 +108,12 @@ async function handler(req, res) {
 
     // 4. 서버 환경 변수 누락 여부 검사
     if (!OPENAI_API_KEY) {
-      console.error('[Configuration Error] OPENAI_API_KEY가 설정되지 않았습니다.');
+      console.error('[Configuration Error] OPENAI_API_KEY 환경변수가 설정되지 않았습니다.');
       return res.status(500).json({
         success: false,
         error: {
           code: 'CONFIGURATION_ERROR',
-          message: '서비스 설정 오류입니다. 잠시 후 다시 시도해 주세요.',
+          message: '서비스 설정 오류입니다. Vercel 환경변수를 확인해 주세요.',
         },
       });
     }
@@ -83,17 +122,6 @@ async function handler(req, res) {
     const openaiClient = new OpenAI({
       apiKey: OPENAI_API_KEY,
     });
-
-    // Supabase 클라이언트 초기화 (설정값이 있는 경우에만 초기화)
-    let supabaseClient = null;
-    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      });
-    }
 
     // 5. OpenAI 감성 분석 요청
     const systemPrompt = `당신은 한국어 텍스트의 감성 분류 도우미입니다.
@@ -123,14 +151,12 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
 
       aiRawResponseText = completion.choices[0]?.message?.content || '';
     } catch (apiError) {
-      // 보안을 유지하면서 구체적인 원인 로그를 Vercel 함수 로그에 남김
-      console.error('[OpenAI Error Status]:', apiError.status);
-      console.error('[OpenAI Error Message]:', apiError.message);
+      console.error('[OpenAI Error Details]:', apiError);
       return res.status(502).json({
         success: false,
         error: {
           code: 'AI_SERVICE_ERROR',
-          message: '분석 서비스를 일시적으로 사용할 수 없습니다.',
+          message: '분석 서비스를 일시적으로 사용할 수 없습니다. (AI 통신 실패)',
         },
       });
     }
@@ -140,7 +166,7 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
     try {
       parsedData = JSON.parse(aiRawResponseText);
     } catch (parseErr) {
-      console.error('[JSON Parse Error] AI 응답 파싱 실패');
+      console.error('[JSON Parse Error] AI 응답 파싱 실패:', aiRawResponseText);
       return res.status(502).json({
         success: false,
         error: {
@@ -168,7 +194,7 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
         success: false,
         error: {
           code: 'AI_RESPONSE_INVALID',
-          message: '분석 결과를 처리하지 못했습니다. 다시 시도해 주세요.',
+          message: '분석 결과 형식이 올바르지 않습니다. 다시 시도해 주세요.',
         },
       });
     }
@@ -183,8 +209,15 @@ reasons는 입력에서 직접 확인 가능한 근거를 한국어로 1~3개 �
     let isSaved = false;
     let saveWarningMessage = null;
 
-    if (supabaseClient) {
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       try {
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        });
+
         const { error: dbError } = await supabaseClient.from('analyses').insert([
           {
             input_text: trimmedText,
