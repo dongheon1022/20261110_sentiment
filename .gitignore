@@ -1,0 +1,23 @@
+# 의존성 모듈
+node_modules/
+
+# 환경 변수 및 비밀 키 파일 (보안 필수)
+.env
+.env*.local
+
+# 로그 파일
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 운영체제 생성 파일
+.DS_Store
+Thumbs.db
+
+# Vercel 로컬 빌드 및 캐시
+.vercel/
+
+# .env.example 템플릿 파일은 버전 관리에 포함
+!.env.example
+

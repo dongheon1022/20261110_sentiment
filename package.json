@@ -1,0 +1,24 @@
+{
+  "name": "ascen",
+  "version": "1.0.0",
+  "description": "ASCEN - 한국어 텍스트 감성 분석 웹 서비스",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "sentiment-analysis",
+    "openai",
+    "supabase"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "openai": "^4.85.4"
+  }
+}
+

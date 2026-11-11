@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCEN — 문장에 담긴 감정의 결을 읽다</title>
+  <meta name="description" content="AI 기반 한국어 텍스트 감성 분석 웹 서비스">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 배경용 설산 산악 분위기 레이어 -->
+  <div class="mountain-bg" aria-hidden="true"></div>
+
+  <!-- 메인 레이아웃 컨테이너 -->
+  <div class="container">
+    
+    <!-- 1. Hero / 브랜드 헤더 영역 -->
+    <header class="brand-header">
+      <h1 class="brand-title">ASCEN</h1>
+      <p class="brand-subtitle">문장에 담긴 감정의 결을 읽다</p>
+    </header>
+
+    <!-- 2. 입력 및 결과 메인 카드 -->
+    <main class="analysis-card">
+      <form id="sentiment-form" class="form-container" novalidate>
+        <div class="form-group">
+          <label for="text-input" class="input-label">분석할 텍스트</label>
+          <textarea
+            id="text-input"
+            name="text"
+            rows="6"
+            placeholder="감정을 분석할 한국어 문장이나 글을 입력하세요..."
+            maxlength="5000"
+            aria-describedby="char-count data-notice input-error-msg"
+            required
+          ></textarea>
+        </div>
+
+        <!-- 글자 수 및 개인정보/저장 안내 영역 -->
+        <div class="meta-row">
+          <span id="char-count" class="char-counter" aria-live="polite">0 / 5,000자</span>
+          <p id="data-notice" class="data-notice">
+            ※ 분석을 위해 입력한 텍스트와 결과가 서비스 데이터베이스에 저장됩니다. 민감한 개인정보는 입력하지 마세요.
+          </p>
+        </div>
+
+        <!-- 에러 메시지 안내 (입력 검증 오류 등) -->
+        <div id="input-error-msg" class="message-banner error-banner hidden" role="alert"></div>
+
+        <!-- 분석 요청 버튼 및 로딩 표시 -->
+        <div class="button-row">
+          <button type="submit" id="submit-btn" class="submit-button">
+            <span class="btn-text">감정 분석하기</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+
+      <!-- 3. 분석 결과 표시 영역 -->
+      <section
+        id="result-section"
+        class="result-container hidden"
+        aria-live="polite"
+        aria-label="감정 분석 결과"
+      >
+        <div class="result-header">
+          <span class="result-badge-label">분석 결과</span>
+          <div id="sentiment-badge" class="sentiment-badge">
+            <span id="sentiment-icon" class="badge-icon"></span>
+            <span id="sentiment-text" class="badge-text"></span>
+          </div>
+        </div>
+
+        <!-- AI 신뢰도 점수 게이지 -->
+        <div class="confidence-box">
+          <div class="confidence-label-row">
+            <span class="confidence-title">AI 판단 신뢰도</span>
+            <span id="confidence-value" class="confidence-score">0%</span>
+          </div>
+          <div class="progress-bar-bg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="confidence-bar-container">
+            <div id="confidence-progress" class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+          <p class="confidence-caption">* 통계적 확률이 아닌 AI 모델의 자기평가 점수입니다.</p>
+        </div>
+
+        <!-- 판단 근거 목록 -->
+        <div class="reasons-box">
+          <h2 class="reasons-title">판단 근거</h2>
+          <ul id="reasons-list" class="reasons-list">
+            <!-- 자바스크립트로 안전하게 <li> 태그 생성 -->
+          </ul>
+        </div>
+
+        <!-- Supabase 저장 실패 시 뜨는 소프트 경고 배너 -->
+        <div id="db-warning-banner" class="message-banner warning-banner hidden" role="status"></div>
+      </section>
+
+      <!-- 서버/네트워크 일반 오류 안내 배너 -->
+      <section id="general-error-section" class="message-banner error-banner hidden" role="alert">
+        <p id="general-error-msg"></p>
+        <button type="button" id="retry-btn" class="retry-button">다시 시도하기</button>
+      </section>
+    </main>
+
+    <!-- 푸터 -->
+    <footer class="app-footer">
+      <p>&copy; ASCEN. All rights reserved.</p>
+    </footer>
+
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
+
